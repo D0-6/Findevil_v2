@@ -5,6 +5,17 @@
 
 set -euo pipefail
 
+# ── NIM API key check ─────────────────────────────────────────────────────────
+if [ -z "${NIM_API_KEY:-}" ]; then
+  echo "ERROR: NIM_API_KEY not set."
+  echo "Run: export NIM_API_KEY=nvapi-your_key_here"
+  exit 1
+fi
+export NIM_MODEL="${NIM_MODEL:-nvidia/nemotron-3-ultra-550b-a55b}"
+export NIM_BASE_URL="${NIM_BASE_URL:-https://integrate.api.nvidia.com/v1}"
+echo "Model : $NIM_MODEL"
+echo "Endpoint: $NIM_BASE_URL"
+
 IMAGE="${1:-/cases/win10_malware.E01}"
 GROUND_TRUTH="${2:-/cases/ground_truth_win10_malware.json}"
 MEMORY_DUMP="${3:-}"          # optional
@@ -25,7 +36,7 @@ echo "  Output dir    : $OUT_DIR"
 echo ""
 
 # ── Step 1: Your agent ────────────────────────────────────────────────────────
-echo "[1/4] Running your agent..."
+echo "[1/4] Running your agent (25 tools + 4 innovations)..."
 AGENT_OUT="$OUT_DIR/your_findings.json"
 MEMORY_FLAG=""
 if [ -n "$MEMORY_DUMP" ]; then
@@ -75,6 +86,25 @@ echo "║  Accuracy report : $ACCURACY_OUT"
 echo "╚══════════════════════════════════════════╝"
 echo ""
 echo "Next steps:"
+echo "  0. OPTIONAL: open second terminal and run:"
+echo "     python dashboard.py --watch $AGENT_OUT"
+echo "     (live dashboard updates as agent runs)"
 echo "  1. Record 5-min demo video showing output above"
-echo "  2. Copy accuracy_report.md into Devpost submission"
-echo "  3. Upload $OUT_DIR/* as execution logs"
+echo "     - Show iteration diff table (agent learning trace)"
+echo "     - Show sigma_matcher firing after evtx_parser"
+echo "     - Show corroboration scores in confirmed findings"
+echo "     - Show token budget utilisation"
+echo "     - Show baseline vs your agent score delta"
+echo "  2. Copy $ACCURACY_OUT into Devpost accuracy report field"
+echo "  3. Upload $OUT_DIR/ as execution logs (required submission component)"
+echo "  4. Push to GitHub with MIT license"
+echo ""
+echo "Submission checklist:"
+echo "  [x] Code repository   -> push to github"
+echo "  [ ] Demo video        -> record now"
+echo "  [x] Architecture diagram -> in README.md"
+echo "  [x] Project description  -> in README.md"
+echo "  [x] Dataset docs         -> ground_truth_win10_malware.json"
+echo "  [x] Accuracy report      -> $ACCURACY_OUT"
+echo "  [x] Try-it-out           -> README quick start"
+echo "  [x] Execution logs       -> $AGENT_OUT (tool_call_log field)"

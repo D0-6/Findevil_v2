@@ -93,7 +93,8 @@ pip install -r requirements.txt
 
 ### 3. Set API key
 ```bash
-export ANTHROPIC_API_KEY=your_key_here
+export NIM_API_KEY=nvapi-your_key_here
+export NIM_MODEL=nvidia/nemotron-3-ultra-550b-a55b  # or any NIM model
 ```
 
 ### 4. Run against a disk image
@@ -133,7 +134,9 @@ python accuracy_report.py \
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ANTHROPIC_API_KEY` | required | Claude API key |
+| `NIM_API_KEY` | required | NVIDIA NIM API key (nvapi-...) |
+| `NIM_BASE_URL` | `https://integrate.api.nvidia.com/v1` | NIM endpoint |
+| `NIM_MODEL` | `nvidia/nemotron-3-ultra-550b-a55b` | Any NIM-hosted model |
 | `SIFT_CASES_DIR` | `/cases` | Directory containing disk images |
 | `SIFT_MOUNT_BASE` | `/mnt/sift_evidence` | Read-only mount point base |
 | `SIFT_MAX_ROWS` | `500` | Max rows per tool call (prevents context flood) |

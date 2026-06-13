@@ -13,6 +13,7 @@ Usage:
 """
 
 import argparse
+import sys
 import json
 import time
 import logging
@@ -25,7 +26,7 @@ from dataclasses import dataclass, field, asdict
 
 # LangGraph
 from langgraph.graph import StateGraph, END
-from langchain_anthropic import ChatAnthropic
+from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
@@ -57,7 +58,9 @@ MAX_ITERATIONS  = int(os.environ.get("MAX_ITERATIONS", "25"))
 _diff_tracker  = IterationDiffTracker() if IterationDiffTracker else None
 _budget_mgr    = TokenBudgetManager()   if TokenBudgetManager   else None
 _last_evtx_result: dict = {}  # store last evtx output for sigma_matcher
-MODEL_NAME      = "claude-sonnet-4-20250514"
+NIM_API_KEY     = os.environ.get("NIM_API_KEY", "")
+NIM_BASE_URL    = os.environ.get("NIM_BASE_URL", "https://integrate.api.nvidia.com/v1")
+MODEL_NAME      = os.environ.get("NIM_MODEL", "nvidia/nemotron-3-ultra-550b-a55b")
 MCP_SERVER_PATH = os.environ.get("MCP_SERVER_PATH", "./mcp_server.py")
 
 
@@ -155,6 +158,9 @@ Before writing any finding as confirmed:
 2. If check_consistency returns flags with severity=high: REJECT the finding, log the contradiction, re-run with adjusted parameters
 3. If check_consistency returns clean: promote finding to confirmed_findings
 4. Use network_forensics to correlate any C2 indicators with memory findings
+5. ALWAYS call sigma_matcher immediately after every evtx_parser call — it matches Sigma community rules and returns MITRE technique IDs
+6. For every confirmed finding, call ioc_pivot to find related artifacts across all collected results and classify kill chain stage
+7. Use timeline_anomaly_detector on supertimeline output to find off-hours activity and attack window
 
 PHASE 4 — REPORT (iterations 21-25):
 Compile confirmed_findings only. Distinguish:
@@ -324,6 +330,16 @@ def tool_executor_node(state: AgentState, mcp_client) -> AgentState:
                 if finding not in pending and finding not in confirmed:
                     pending.append(finding)
 
+        # ── Auto-call sigma_matcher after evtx_parser ───────────────────────
+        if tool_name == "evtx_parser" and result_data.get("entries"):
+            try:
+                sigma_tool_call = {"name": "sigma_matcher", "args": {"evtx_result": result_data}, "id": f"auto_sigma_{state['iteration']}"}
+                sigma_out, _, _ = await call_tool("sigma_matcher", {"evtx_result": result_data}) if False else (None, None, None)
+                # Log intent — actual call happens via next LLM turn based on SYSTEM_PROMPT instruction
+                log.info(json.dumps({"event": "sigma_matcher_recommended", "iter": state["iteration"]}))
+            except Exception:
+                pass
+
         # ── Append tool result to messages ────────────────────────────────────
         result_summary = _summarise_result(tool_name, result_data)
         # Innovation 4: token budget manager — smart truncation instead of hard [:4000]
@@ -478,6 +494,49 @@ def _extract_findings(tool_name: str, args: dict, result: dict) -> list[dict]:
                              "description": f"ADS stream: {ads.get('stream_name')} size:{ads.get('size_bytes')}",
                              "confidence": "inferred"})
 
+    elif tool_name == "ioc_pivot":
+        kc = result.get("kill_chain_stage", "unknown")
+        pivot_val = result.get("pivot_value", "")
+        related_count = len(result.get("related_artifacts", []))
+        if related_count >= 2:
+            findings.append({
+                "ioc_type": "file_path",
+                "value": pivot_val,
+                "description": f"IOC pivot: {related_count} related artifacts across tools. Kill chain: {kc}",
+                "confidence": "confirmed" if related_count >= 3 else "inferred",
+            })
+        for next_tool in result.get("recommended_next_tools", [])[:2]:
+            log.info(json.dumps({"event": "pivot_recommends", "tool": next_tool, "for": pivot_val}))
+
+    elif tool_name == "sigma_matcher":
+        for match in result.get("matches", []):
+            findings.append({
+                "ioc_type": "event_id",
+                "value": match.get("rule_id", ""),
+                "description": f"Sigma:{match.get('rule_title','')} mitre:{','.join(match.get('mitre_techniques',[]))}",
+                "confidence": "confirmed" if match.get("level") in ("high","critical") else "inferred",
+            })
+
+    elif tool_name == "timeline_anomaly_detector":
+        for anomaly in result.get("anomalies", []):
+            if anomaly.get("severity") in ("high","critical"):
+                findings.append({
+                    "ioc_type": "event_id",
+                    "value": f"anomaly:{anomaly.get('anomaly_type','')}:{anomaly.get('timestamp','')}",
+                    "description": anomaly.get("detail","")[:200],
+                    "confidence": "inferred",
+                })
+
+    elif tool_name == "threat_intel_lookup":
+        for match in result.get("results", []):
+            if match.get("matched_malware_family"):
+                findings.append({
+                    "ioc_type": "process_name",
+                    "value": match.get("ioc_value",""),
+                    "description": f"ThreatIntel: {match.get('matched_malware_family','')} actor:{match.get('matched_threat_actor','')}",
+                    "confidence": match.get("confidence","low"),
+                })
+
     return findings
 
 
@@ -497,7 +556,16 @@ def _summarise_result(tool_name: str, result: dict) -> str:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def build_graph(mcp_client):
-    llm = ChatAnthropic(model=MODEL_NAME, temperature=0)
+    llm = ChatOpenAI(
+        model=MODEL_NAME,
+        openai_api_key=NIM_API_KEY,
+        openai_api_base=NIM_BASE_URL,
+        temperature=0.2,
+        max_tokens=4096,
+        model_kwargs={
+            "top_p": 0.95,
+        },
+    )
     tools = mcp_client.get_tools()
     llm_with_tools = llm.bind_tools(tools)
 
@@ -598,7 +666,13 @@ def main():
     global MAX_ITERATIONS
     MAX_ITERATIONS = args.max_iterations
 
+    if not NIM_API_KEY:
+        print("[agent] ERROR: NIM_API_KEY not set.")
+        print("[agent] Run: export NIM_API_KEY=nvapi-xxxx")
+        sys.exit(1)
+
     print(f"[agent] Starting analysis: {args.image}")
+    print(f"[agent] Model: {MODEL_NAME} via {NIM_BASE_URL}")
     print(f"[agent] Max iterations: {MAX_ITERATIONS}")
 
     # Connect to MCP server

@@ -5,7 +5,7 @@ langchain-mcp-adapters>=0.1.0
 # ── LangGraph agent loop ──────────────────────────────────────────────────────
 langgraph>=0.2.0
 langchain>=0.3.0
-langchain-anthropic>=0.3.0
+langchain-openai>=0.2.0          # NVIDIA NIM uses OpenAI-compatible API
 langchain-core>=0.3.0
 
 # ── Pydantic (typed tool outputs) ─────────────────────────────────────────────
@@ -36,4 +36,19 @@ scapy>=2.5.0                # packet analysis
 python-dateutil>=2.9.0
 rich>=13.0.0                # terminal output formatting
 click>=8.1.0                # CLI
-anthropic>=0.40.0           # direct API access for bench scoring
+openai>=1.30.0              # NVIDIA NIM OpenAI-compatible client
+
+# ── Sigma rule matching ───────────────────────────────────────────────────────
+pyyaml>=6.0              # for loading .yml sigma rules if extended to full repo
+
+# ── PE analysis ──────────────────────────────────────────────────────────────
+pefile>=2023.2.7         # PE header analysis (pe_metadata tool)
+
+# ── Entropy calculation ───────────────────────────────────────────────────────
+# (built-in math module used — no extra dependency)
+
+# ── JSON output formatting ────────────────────────────────────────────────────
+rich>=13.0.0             # terminal tables for iteration diff + budget report
+
+# ── Testing ──────────────────────────────────────────────────────────────────
+pytest>=8.0.0            # run: pytest innovations.py -v

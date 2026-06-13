@@ -573,8 +573,8 @@ class IterationDiffTracker:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Rough token estimates (1 token ≈ 4 chars for English text)
-CLAUDE_CONTEXT_LIMIT  = 180_000   # claude-sonnet-4 context window (tokens)
-TOOL_RESULT_BUDGET    = 80_000    # max tokens reserved for tool results in context
+CLAUDE_CONTEXT_LIMIT  = 128_000   # nemotron-3-ultra-550b context window (tokens)
+TOOL_RESULT_BUDGET    = 60_000    # max tokens reserved for tool results in context
 SUMMARISE_THRESHOLD   = 0.70      # summarise when tool results hit 70% of budget
 EVICT_THRESHOLD       = 0.90      # evict oldest when hitting 90%
 
