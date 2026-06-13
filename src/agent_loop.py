@@ -334,7 +334,7 @@ def tool_executor_node(state: AgentState, mcp_client) -> AgentState:
         if tool_name == "evtx_parser" and result_data.get("entries"):
             try:
                 sigma_tool_call = {"name": "sigma_matcher", "args": {"evtx_result": result_data}, "id": f"auto_sigma_{state['iteration']}"}
-                sigma_out, _, _ = await call_tool("sigma_matcher", {"evtx_result": result_data}) if False else (None, None, None)
+                sigma_out, _, _ = (None, None, None)
                 # Log intent — actual call happens via next LLM turn based on SYSTEM_PROMPT instruction
                 log.info(json.dumps({"event": "sigma_matcher_recommended", "iter": state["iteration"]}))
             except Exception:
@@ -656,6 +656,7 @@ def write_output(state: AgentState, output_path: str):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def main():
+    global MAX_ITERATIONS
     parser = argparse.ArgumentParser(description="Find Evil Self-Correcting Agent")
     parser.add_argument("--image",          required=True)
     parser.add_argument("--output",         default="/tmp/your_findings.json")
@@ -663,7 +664,6 @@ def main():
     parser.add_argument("--memory-dump",    default=None)
     args = parser.parse_args()
 
-    global MAX_ITERATIONS
     MAX_ITERATIONS = args.max_iterations
 
     if not NIM_API_KEY:
